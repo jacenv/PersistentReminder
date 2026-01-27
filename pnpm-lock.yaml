@@ -1,0 +1,22 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      discord.py:
+        specifier: ^1.0.0
+        version: 1.0.0
+
+packages:
+
+  discord.py@1.0.0:
+    resolution: {integrity: sha512-0YIrTHYeLg9n6ydcGXAj06FJn9m7Xquz2AE06XI2J3KtYeq7oPIiwdJW7LYQZ/y8NXHqV0O81Vq5lk0ri/gAHg==}
+
+snapshots:
+
+  discord.py@1.0.0: {}
