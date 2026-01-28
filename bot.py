@@ -32,6 +32,7 @@ async def remind(ctx, interval_minutes: int, *, task: str):
         "task": task,
         "interval": interval_minutes,
         "last_notified": datetime.datetime.now(),
+        "created_at": datetime.datetime.now(),
         "channel_id": ctx.channel.id
     })
     
@@ -41,6 +42,14 @@ async def remind(ctx, interval_minutes: int, *, task: str):
     embed.set_footer(text="Type !list to see all reminders")
     
     await ctx.send(embed=embed)
+
+@remind.error
+async def remind_error(ctx, error):
+    if isinstance(error, (commands.BadArgument, commands.MissingRequiredArgument)):
+        embed = discord.Embed(title="❌ Incorrect Usage", color=discord.Color.red())
+        embed.description = "To set a reminder, use the format:\n`!remind <minutes> <task>`"
+        embed.add_field(name="Example", value="`!remind 5 drink water`\n(Reminds you to drink water every 5 minutes)")
+        await ctx.send(embed=embed)
 
 @bot.command(name="list")
 async def list_reminders(ctx):
@@ -54,7 +63,8 @@ async def list_reminders(ctx):
     embed = discord.Embed(title="📝 Your Active Reminders", color=discord.Color.blue())
     description = ""
     for i, r in enumerate(reminders[user_id], 1):
-        description += f"**{i}.** {r['task']} *(Every {r['interval']} mins)*\n"
+        created_at = r.get('created_at', datetime.datetime.now()).strftime("%I:%M %p")
+        description += f"**{i}.** {r['task']} *(Every {r['interval']} mins)*\nSet at: {created_at}\n\n"
     
     embed.description = description
     await ctx.send(embed=embed)
