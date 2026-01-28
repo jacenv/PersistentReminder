@@ -32,6 +32,7 @@ async def remind(ctx, interval_minutes: int, *, task: str):
         "task": task,
         "interval": interval_minutes,
         "last_notified": datetime.datetime.now(),
+        "next_notification": datetime.datetime.now() + datetime.timedelta(minutes=interval_minutes),
         "created_at": datetime.datetime.now(),
         "channel_id": ctx.channel.id
     })
@@ -62,11 +63,63 @@ async def list_reminders(ctx):
     
     embed = discord.Embed(title="📝 Your Active Reminders", color=discord.Color.blue())
     description = ""
+    now = datetime.datetime.now()
     for i, r in enumerate(reminders[user_id], 1):
-        created_at = r.get('created_at', datetime.datetime.now()).strftime("%I:%M %p")
-        description += f"**{i}.** {r['task']} *(Every {r['interval']} mins)*\nSet at: {created_at}\n\n"
+        # Calculate time remaining
+        target_time = r.get('next_notification')
+        if not target_time:
+             target_time = r['last_notified'] + datetime.timedelta(minutes=r['interval'])
+        
+        remaining = (target_time - now).total_seconds()
+        
+        if remaining <= 0:
+            time_str = "**Due now!**"
+        else:
+            minutes = int(remaining // 60)
+            seconds = int(remaining % 60)
+            if minutes > 0:
+                time_str = f"in {minutes}m {seconds}s"
+            else:
+                time_str = f"in {seconds}s"
+
+        created_at = r.get('created_at', now).strftime("%I:%M %p")
+        description += f"**{i}.** {r['task']} *(Every {r['interval']} mins)*\nSet at: {created_at} • Next ping: {time_str}\n\n"
     
     embed.description = description
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def snooze(ctx, index: int = None):
+    """Snoozes a reminder for 5 minutes (or its original interval if shorter)."""
+    user_id = ctx.author.id
+    if user_id not in reminders or not reminders[user_id]:
+        await ctx.send("You don't have any active reminders!")
+        return
+
+    if index is None:
+        # If user has only one reminder, default to it
+        if len(reminders[user_id]) == 1:
+            index = 1
+        else:
+            await ctx.send("⚠️ Please specify which reminder number to snooze (e.g., `!snooze 1`). Use `!list` to see numbers.")
+            return
+
+    if index < 1 or index > len(reminders[user_id]):
+        await ctx.send(f"❌ Invalid number. Please verify with `!list`.")
+        return
+
+    reminder = reminders[user_id][index - 1]
+    
+    # Logic: Snooze for 5 minutes, OR the original interval if it's less than 5 minutes
+    snooze_duration = min(5, reminder['interval'])
+    
+    # Update the next notification time
+    reminder['next_notification'] = datetime.datetime.now() + datetime.timedelta(minutes=snooze_duration)
+    # Reset last_notified so nag_loop logic works correctly with the new target time
+    reminder['last_notified'] = datetime.datetime.now()
+
+    embed = discord.Embed(title="💤 Snoozed!", color=discord.Color.blue())
+    embed.description = f"I've snoozed **{reminder['task']}** for {snooze_duration} minutes."
     await ctx.send(embed=embed)
 
 @bot.command()
@@ -96,25 +149,32 @@ async def done(ctx, index: int = None):
     await ctx.send(embed=embed)
 
 # Create a check that checks to see each minute if YOU have finished the task XD
-@tasks.loop(seconds=60) # Checks every minute
+@tasks.loop(seconds=1) # Checks every second for precision
 async def nag_loop():
     now = datetime.datetime.now()
     
     # Iterate over a copy of items since we might modify dictionary (though deleting users inside loop of items is risky, 
     # but here we iterate list(items))
     for user_id, user_reminders in list(reminders.items()):
-        for reminder in user_reminders:
-            # Calculate time difference
-            elapsed = (now - reminder['last_notified']).total_seconds() / 60
+        for i, reminder in enumerate(user_reminders, 1):
+            # Check if it's time to notify based on next_notification
+            # If next_notification key doesn't exist (legacy), fallback to interval check logic
             
-            if elapsed >= reminder['interval']:
+            target_time = reminder.get('next_notification')
+            
+            # If we don't have a target time yet (legacy), calculate it
+            if not target_time:
+                 target_time = reminder['last_notified'] + datetime.timedelta(minutes=reminder['interval'])
+
+            if now >= target_time:
                 channel = bot.get_channel(reminder['channel_id'])
                 if channel:
-                    embed = discord.Embed(title="🔔 Reminder!", description=f"Have you finished: **{reminder['task']}**?", color=discord.Color.orange())
-                    embed.set_footer(text="Type !done <number> to stop")
+                    embed = discord.Embed(title=f"🔔 Reminder #{i}", description=f"Have you finished: **{reminder['task']}**?", color=discord.Color.orange())
+                    embed.set_footer(text=f"Type !done {i} to stop or !snooze {i} to snooze")
                     await channel.send(content=f"<@{user_id}>", embed=embed)
                 
-                # Update last notified time
+                # Update last notified time and set next notification time
                 reminder['last_notified'] = now
+                reminder['next_notification'] = now + datetime.timedelta(minutes=reminder['interval'])
 
 bot.run(TOKEN)
