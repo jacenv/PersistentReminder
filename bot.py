@@ -35,21 +35,29 @@ async def remind(ctx, interval_minutes: int, *, task: str):
         "channel_id": ctx.channel.id
     })
     
-    await ctx.send(f"✅ I'll remind you to **'{task}'** every {interval_minutes} minutes.")
+    embed = discord.Embed(title="✅ Reminder Set!", color=discord.Color.green())
+    embed.add_field(name="Task", value=task, inline=False)
+    embed.add_field(name="Interval", value=f"Every {interval_minutes} minutes", inline=False)
+    embed.set_footer(text="Type !list to see all reminders")
+    
+    await ctx.send(embed=embed)
 
 @bot.command(name="list")
 async def list_reminders(ctx):
     """Lists all active reminders."""
     user_id = ctx.author.id
     if user_id not in reminders or not reminders[user_id]:
-        await ctx.send("You don't have any active reminders!")
+        embed = discord.Embed(title="No Active Reminders", description="You're all clear! 🎉", color=discord.Color.blue())
+        await ctx.send(embed=embed)
         return
     
-    response = "**Your Active Reminders:**\n"
+    embed = discord.Embed(title="📝 Your Active Reminders", color=discord.Color.blue())
+    description = ""
     for i, r in enumerate(reminders[user_id], 1):
-        response += f"{i}. **{r['task']}** (Every {r['interval']} mins)\n"
+        description += f"**{i}.** {r['task']} *(Every {r['interval']} mins)*\n"
     
-    await ctx.send(response)
+    embed.description = description
+    await ctx.send(embed=embed)
 
 @bot.command()
 async def done(ctx, index: int = None):
@@ -73,7 +81,9 @@ async def done(ctx, index: int = None):
     if not reminders[user_id]:
         del reminders[user_id]
 
-    await ctx.send(f"✅ Stopped reminder: **{removed_task['task']}**")
+    embed = discord.Embed(title="✅ Reminder Stopped", color=discord.Color.green())
+    embed.description = f"Great job! I've stopped reminding you about:\n**{removed_task['task']}**"
+    await ctx.send(embed=embed)
 
 # Create a check that checks to see each minute if YOU have finished the task XD
 @tasks.loop(seconds=60) # Checks every minute
@@ -90,7 +100,9 @@ async def nag_loop():
             if elapsed >= reminder['interval']:
                 channel = bot.get_channel(reminder['channel_id'])
                 if channel:
-                    await channel.send(f"🔔 <@{user_id}>, have you finished: **{reminder['task']}**? (Type `!done <number>` to stop)")
+                    embed = discord.Embed(title="🔔 Reminder!", description=f"Have you finished: **{reminder['task']}**?", color=discord.Color.orange())
+                    embed.set_footer(text="Type !done <number> to stop")
+                    await channel.send(content=f"<@{user_id}>", embed=embed)
                 
                 # Update last notified time
                 reminder['last_notified'] = now
